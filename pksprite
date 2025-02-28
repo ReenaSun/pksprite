@@ -1,0 +1,101 @@
+from PIL import Image, ImageTk
+import tkinter as tk
+from tkinter import filedialog, Label, Button
+from tkinter import ttk
+import numpy as np
+from sklearn.cluster import KMeans
+import threading
+
+class ImageConverterApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Image Converter")
+        
+        self.input_image_path = None
+        self.converted_image = None
+        
+        self.select_button = Button(root, text="Select Image", command=self.select_input_image)
+        self.select_button.pack()
+        
+        self.convert_button = Button(root, text="Convert Image", command=self.start_conversion)
+        self.convert_button.pack()
+        
+        self.save_button = Button(root, text="Save Image", command=self.save_image)
+        self.save_button.pack()
+        
+        self.image_label = Label(root)
+        self.image_label.pack()
+        
+        self.progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate")
+        self.progress.pack()
+    
+    def select_input_image(self):
+        self.input_image_path = filedialog.askopenfilename(title="Select Input Image", filetypes=[("Image Files", "*.jpg;*.jpeg;*.png;*.bmp")])
+        if self.input_image_path:
+            self.show_preview(Image.open(self.input_image_path))
+    
+    def show_preview(self, img):
+        img_tk = ImageTk.PhotoImage(img)
+        self.image_label.config(image=img_tk)
+        self.image_label.image = img_tk  # Keep a reference to avoid garbage collection
+    
+    def save_image(self):
+        if self.converted_image:
+            output_image_path = filedialog.asksaveasfilename(title="Save Output Image", defaultextension=".png", filetypes=[("PNG Files", "*.png")])
+            if output_image_path:
+                self.converted_image.save(output_image_path)
+                print(f"Image saved to {output_image_path}")
+            else:
+                print("Output path not selected.")
+        else:
+            print("No image to save.")
+    
+    def get_palette(self, image, num_colors=4):
+        # Resize image to reduce the number of pixels for k-means clustering
+        small_image = image.resize((100, 100))
+        
+        # Convert image to numpy array
+        img_array = np.array(small_image)
+        img_array = img_array.reshape((-1, 3))
+        
+        # Use k-means clustering to find the most representative colors
+        kmeans = KMeans(n_clusters=num_colors, random_state=0)
+        kmeans.fit(img_array)
+        colors = kmeans.cluster_centers_.astype(int)
+        
+        return [tuple(color) for color in colors]
+    
+    def convert_image(self):
+        if self.input_image_path:
+            # Open the input image
+            img = Image.open(self.input_image_path)
+            
+            # Analyze the colors in the original image and generate a 4-color palette
+            colors = self.get_palette(img)
+            palette = []
+            for color in colors:
+                palette.extend(color)
+            palette.extend([0, 0, 0] * (256 - len(palette) // 3))
+            
+            # Convert the image to use the generated 4-color palette
+            img = img.convert("P", palette=Image.ADAPTIVE, colors=4)
+            img.putpalette(palette)
+            
+            # Show the preview of the converted image
+            self.converted_image = img
+            self.show_preview(img)
+        else:
+            print("Input image not selected.")
+    
+    def start_conversion(self):
+        self.progress.start()
+        threading.Thread(target=self.run_conversion).start()
+    
+    def run_conversion(self):
+        self.convert_image()
+        self.progress.stop()
+
+# Create the main application window
+root = tk.Tk()
+app = ImageConverterApp(root)
+root.mainloop()
