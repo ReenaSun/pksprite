@@ -103,17 +103,19 @@ class ImageConverterApp:
         return np.argmin(distances)
 
     def convert_image(self):
-        if self.input_image_path:
-            try:
+        if not self.input_image_path:
+            self.update_status("Waiting to convert...")
+            self.update_progress(0)
+            return
+        try:
                 self.update_status("Opening the input image...")
                 self.update_progress(10)
                 img = Image.open(self.input_image_path)
-            except Exception as e:
+        except Exception as e:
                 self.update_status(f"Error opening image: {e}")
                 self.update_progress(0)
                 return
-        
-        # Create a mask for the transparent areas
+    
         mask = img.split()[3] if img.mode == 'RGBA' else None
         
         self.update_status("Analyzing colors and generating a 4-color palette...")
