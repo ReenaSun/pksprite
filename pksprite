@@ -13,6 +13,8 @@ class ImageConverterApp:
         
         self.input_image_path = None
         self.converted_image = None
+        self.resized_image = None
+        self.show_resized = False  # Initialize the show_resized attribute
         
         self.select_button = Button(root, text="Select Image", command=self.select_input_image)
         self.select_button.pack()
@@ -22,6 +24,9 @@ class ImageConverterApp:
         
         self.save_button = Button(root, text="Save Image", command=self.save_image)
         self.save_button.pack()
+        
+        self.toggle_button = Button(root, text="Show Resized Image", command=self.toggle_image_size)
+        self.toggle_button.pack()
         
         self.image_label = Label(root)
         self.image_label.pack()
@@ -51,11 +56,22 @@ class ImageConverterApp:
             print("No image to save.")
     
     def get_palette(self, image, num_colors=4):
+        # Ensure the image is in RGBA mode to handle transparency
+        image = image.convert("RGBA")
+        
         # Resize image to reduce the number of pixels for k-means clustering
         small_image = image.resize((100, 100))
         
         # Convert image to numpy array
         img_array = np.array(small_image)
+        
+        # Filter out fully transparent pixels
+        img_array = img_array[img_array[:, :, 3] != 0]
+        
+        # Remove the alpha channel
+        img_array = img_array[:, :3]
+        
+        # Reshape the array for k-means clustering
         img_array = img_array.reshape((-1, 3))
         
         # Use k-means clustering to find the most representative colors
@@ -64,11 +80,14 @@ class ImageConverterApp:
         colors = kmeans.cluster_centers_.astype(int)
         
         return [tuple(color) for color in colors]
-    
+
     def convert_image(self):
         if self.input_image_path:
             # Open the input image
             img = Image.open(self.input_image_path)
+            
+            # Create a mask for the transparent areas
+            mask = img.split()[3] if img.mode == 'RGBA' else None
             
             # Analyze the colors in the original image and generate a 4-color palette
             colors = self.get_palette(img)
@@ -81,11 +100,35 @@ class ImageConverterApp:
             img = img.convert("P", palette=Image.ADAPTIVE, colors=4)
             img.putpalette(palette)
             
+            # Resize the final image to 56x56
+            self.resized_image = img.resize((56, 56), Image.NEAREST)
+            
+            # Apply the mask to preserve transparency
+        if mask:
+            img = img.convert("RGBA")
+            img.putalpha(mask)
+            self.resized_image.putalpha(mask.resize((56, 56), Image.NEAREST))
+            
+            # Apply the mask to preserve transparency
+        if mask:
+            img = img.convert("RGBA")
+            img.putalpha(mask)
+            
             # Show the preview of the converted image
             self.converted_image = img
             self.show_preview(img)
         else:
             print("Input image not selected.")
+    
+    def toggle_image_size(self):
+        if self.converted_image and self.resized_image:
+            self.show_resized = not self.show_resized
+            if self.show_resized:
+                self.toggle_button.config(text="Show Original Image")
+                self.show_preview(self.resized_image)
+            else:
+                self.toggle_button.config(text="Show Resized Image")
+                self.show_preview(self.converted_image)
     
     def start_conversion(self):
         self.progress.start()
