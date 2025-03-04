@@ -9,7 +9,17 @@ import threading
 class ImageConverterApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Image Converter")
+        self.root.title("PkSprite")
+        
+        self.bottom_frame = ttk.Frame(root)
+        self.bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        self.status_label = ttk.Label(self.bottom_frame, text="Status: Ready")
+        self.status_label.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        self.progress = ttk.Progressbar(self.bottom_frame, mode='determinate')
+        self.progress.pack(side=tk.RIGHT, padx=10, pady=5, fill=tk.X, expand=True)
+        
         
         self.input_image_path = None
         self.converted_image = None
@@ -31,8 +41,15 @@ class ImageConverterApp:
         self.image_label = Label(root)
         self.image_label.pack()
         
-        self.progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate")
-        self.progress.pack()
+    def update_status(self, message):
+        def update():
+            self.status_label.config(text=f"Status: {message}")
+        self.root.after(0, update)
+        
+    def update_progress(self, value):
+        def update():
+            self.progress['value'] = value
+        self.root.after(0, update)
     
     def select_input_image(self):
         self.input_image_path = filedialog.askopenfilename(title="Select Input Image", filetypes=[("Image Files", "*.jpg;*.jpeg;*.png;*.bmp")])
@@ -80,45 +97,70 @@ class ImageConverterApp:
         colors = kmeans.cluster_centers_.astype(int)
         
         return [tuple(color) for color in colors]
+    
+    def closest_color(self, pixel, palette):
+        distances = np.sqrt(np.sum((palette - pixel) ** 2, axis=1))
+        return np.argmin(distances)
 
     def convert_image(self):
         if self.input_image_path:
-            # Open the input image
-            img = Image.open(self.input_image_path)
-            
-            # Create a mask for the transparent areas
-            mask = img.split()[3] if img.mode == 'RGBA' else None
-            
-            # Analyze the colors in the original image and generate a 4-color palette
-            colors = self.get_palette(img)
-            palette = []
-            for color in colors:
-                palette.extend(color)
-            palette.extend([0, 0, 0] * (256 - len(palette) // 3))
-            
-            # Convert the image to use the generated 4-color palette
-            img = img.convert("P", palette=Image.ADAPTIVE, colors=4)
-            img.putpalette(palette)
-            
-            # Resize the final image to 56x56
-            self.resized_image = img.resize((56, 56), Image.NEAREST)
-            
-            # Apply the mask to preserve transparency
+            try:
+                self.update_status("Opening the input image...")
+                self.update_progress(10)
+                img = Image.open(self.input_image_path)
+            except Exception as e:
+                self.update_status(f"Error opening image: {e}")
+                self.update_progress(0)
+                return
+        
+        # Create a mask for the transparent areas
+        mask = img.split()[3] if img.mode == 'RGBA' else None
+        
+        self.update_status("Analyzing colors and generating a 4-color palette...")
+        self.update_progress(20)
+        # Analyze the colors in the original image and generate a 4-color palette
+        colors = self.get_palette(img)
+        palette = np.array(colors)
+        
+        self.update_status("Converting the image to a numpy array...")
+        self.update_progress(30)
+        # Convert the image to a numpy array
+        img_array = np.array(img.convert('RGB'))
+        
+        self.update_status("Quantizing the image...")
+        self.update_progress(40)
+        # Create an empty array for the quantized image
+        quantized_array = np.zeros_like(img_array)
+        
+        # Quantize each pixel
+        for i in range(img_array.shape[0]):
+            for j in range(img_array.shape[1]):
+                pixel = img_array[i, j]
+                closest_idx = self.closest_color(pixel, palette)
+                quantized_array[i, j] = palette[closest_idx]
+        
+        self.update_status("Converting the quantized array back to an image...")
+        self.update_progress(70)
+        # Convert the quantized array back to an image
+        img = Image.fromarray(quantized_array.astype('uint8'), 'RGB')
+        
+        self.update_status("Resizing the final image to 56x56...")
+        self.update_progress(80)
+        self.resized_image = img.resize((56, 56), Image.NEAREST)
+        
         if mask:
+            self.update_status("Applying mask to preserve transparency...")
+            self.update_progress(90)
             img = img.convert("RGBA")
             img.putalpha(mask)
             self.resized_image.putalpha(mask.resize((56, 56), Image.NEAREST))
-            
-            # Apply the mask to preserve transparency
-        if mask:
-            img = img.convert("RGBA")
-            img.putalpha(mask)
-            
-            # Show the preview of the converted image
-            self.converted_image = img
-            self.show_preview(img)
-        else:
-            print("Input image not selected.")
+        
+        self.update_status("Preparing preview...")
+        self.update_progress(95)
+        self.converted_image = img
+        self.show_preview(img)
+        self.update_progress(100)
+        self.update_status("Conversion complete!")
     
     def toggle_image_size(self):
         if self.converted_image and self.resized_image:
@@ -131,14 +173,16 @@ class ImageConverterApp:
                 self.show_preview(self.converted_image)
     
     def start_conversion(self):
-        self.progress.start()
-        threading.Thread(target=self.run_conversion).start()
+        conversion_thread = threading.Thread(target=self.convert_image)
+        conversion_thread.start()
     
     def run_conversion(self):
+        self.progress.start()
         self.convert_image()
         self.progress.stop()
 
 # Create the main application window
 root = tk.Tk()
 app = ImageConverterApp(root)
+app.start_conversion()
 root.mainloop()
