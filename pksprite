@@ -5,11 +5,20 @@ from tkinter import ttk
 import numpy as np
 from sklearn.cluster import KMeans
 import threading
+import sys
+import os
 
 class ImageConverterApp:
     def __init__(self, root):
         self.root = root
         self.root.title("PkSprite")
+        
+        # Set the window icon
+        if hasattr(sys, '_MEIPASS'):
+            icon_path = os.path.join(sys._MEIPASS, 'pkspriteicon.ico')
+        else:
+            icon_path = os.path.join(os.path.dirname(__file__), 'pkspriteicon.ico')
+        self.root.iconbitmap(icon_path)
         
         self.bottom_frame = ttk.Frame(root)
         self.bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
